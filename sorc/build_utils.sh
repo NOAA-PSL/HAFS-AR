@@ -2,19 +2,13 @@
 set -eux
 source ./machine-setup.sh > /dev/null 2>&1
 if [ $target = wcoss2 ]; then source ../versions/build.ver; fi
+
+#Supports Debug or Release modes for the build
+BUILD_MODE=${BUILD_MODE:-Release}
+
 cwd=$(pwd)
-
-cp -fp ../modulefiles/hafs.hera.lua hafs_utils.fd/modulefiles/build.hera.intel.lua
-
-if [[ ! -s hafs_utils.fd/modulefiles/build.gaea.intel.lua ]] ; then
-    pushd hafs_utils.fd
-    patch -p1 < ../customizations/hafs_utils.fd/gaea-c5-patch.diff
-    popd
-    cp -fp customizations/hafs_utils.fd/build.gaea-c5.intel.lua hafs_utils.fd/modulefiles/build.gaea.intel.lua
-fi
 
 cd hafs_utils.fd
 
+export BUILD_TYPE=${BUILD_MODE}
 ./build_all.sh
-
-exit
