@@ -1,3 +1,12 @@
+################################################################################
+# Script Name: hafs_pre_job.sh.inc
+# Authors: NECP/EMC Hurricane Project Team and UFS Hurricane Application Team
+# Abstract:
+#   This script detects HAFS running platform and prepares module environment.
+# History:
+#   04/04/2019: This script was adopted/inerited from HWRF and updated for HAFS.
+################################################################################
+
 # Create a test function for sh vs. bash detection.  The name is
 # randomly generated to reduce the chances of name collision.
 __ms_function_name="setup__test_function__$$"
@@ -29,33 +38,46 @@ if [[ -d /lfs5 ]] ; then
   module purge
   module use /apps/modules/modulefiles
   module use /apps/lmod/lmod/modulefiles/Core
-elif [[ -d /scratch1/NCEPDEV ]] ; then
-  # We are on NOAA Hera
-  if ( ! eval module help > /dev/null 2>&1 ) ; then
-    echo load the module command 1>&2
-    source /apps/lmod/lmod/init/$__ms_shell
-  fi
-  target=hera
-  module purge
-  module use /apps/modules/modulefiles
-  module use /apps/lmod/lmod/modulefiles/Core
-  if ( ! which sbatch > /dev/null 2>&1 ) ; then
-    # Script was run from a crontab.
-    export PATH=$PATH:/apps/slurm/default/bin
+elif [[ -d /scratch3/NCEPDEV && -d /scratch4/NCEPDEV ]] ; then
+  if [[ "$(hostname)" =~ "u" ]] ; then
+    # We are on NOAA Ursa
+    target=ursa
+    source $MODULESHOME/init/$__ms_shell
+    module purge
+    module use /apps/modules/modulefiles
+    module use /apps/lmod/lmod/modulefiles/Core
+  elif [[ "$(hostname)" =~ "h" ]] ; then
+    # We are on NOAA Hera
+    if ( ! eval module help > /dev/null 2>&1 ) ; then
+      echo load the module command 1>&2
+      source /apps/lmod/lmod/init/$__ms_shell
+    fi
+    target=hera
+    module purge
+    module use /apps/modules/modulefiles
+    module use /apps/lmod/lmod/modulefiles/Core
   fi
 elif [[ -d /work/noaa ]] ; then
-  # We are on MSU Orion
-  if ( ! eval module help > /dev/null 2>&1 ) ; then
-    echo load the module command 1>&2
-    source /apps/lmod/lmod/init/$__ms_shell
+  # We are on MSU Orion/Hercules
+  if [[ "$(hostname)" =~ "hercules" ]] ; then
+    source /apps/other/lmod/lmod/init/$__ms_shell
+    target=hercules
+    module purge
+#    module use /apps/contrib/modulefiles
+    ulimit -s 6000000
+  else
+    if ( ! eval module help > /dev/null 2>&1 ) ; then
+      echo load the module command 1>&2
+      source /apps/lmod/lmod/init/$__ms_shell
+    fi
+    target=orion
+    module purge
+    module use /apps/modulefiles/core
+    module use /apps/contrib/modulefiles
+    module use /apps/contrib/NCEPLIBS/lib/modulefiles
+    module use /apps/contrib/NCEPLIBS/orion/modulefiles
+    ulimit -s unlimited
   fi
-  target=orion
-  module purge
-  module use /apps/modulefiles/core
-  module use /apps/contrib/modulefiles
-  module use /apps/contrib/NCEPLIBS/lib/modulefiles
-  module use /apps/contrib/NCEPLIBS/orion/modulefiles
-  ulimit -s unlimited
 elif [[ -d /lfs/h1 && -d /lfs/h2 ]] ; then
   # We are on NOAA WCOSS2
   echo load the module command 1>&2
@@ -72,19 +94,31 @@ elif [[ -d /glade ]] ; then
   fi
   target=cheyenne
   module purge
-elif [[ -d /ncrc ]] ; then
-  # You cannot "module purge" on GAEA
-  if ( head /proc/cpuinfo | grep AuthenticAMD > /dev/null ) ; then
-      target=gaea_c5
-  else
-      target=gaea
-  fi
-  if [[ "${ARCHIVE_STEP:-Q}" == TAPE ]] ; then
-    module use -a /sw/rdtn/modulefiles
+elif [[ -d /gpfs/f6 ]]; then
+  source $MODULESHOME/init/sh
+  export LMOD_IGNORE_CACHE=1
+  module reset
+  if [[ "$(hostname)" == "gaea6"* ]] || [[ "$(hostname)" == "c6"* ]]; then
+    target=gaeac6
+    ulimit -s unlimited
+  elif [[ "$(hostname)" == "dtn"* ]]; then
+    target="gaeac6dtn"
+    module use /usw/hpss/modulefiles
     module load hsi
   fi
-  ulimit -s unlimited
-  export TZ=UTC
+elif [[ -d /lustre && -d /ncrc ]] ; then
+  # We are on GAEA.
+  if ( ! eval module help > /dev/null 2>&1 ) ; then
+    # We cannot simply load the module command.  The GAEA
+    # /etc/profile modifies a number of module-related variables
+    # before loading the module command.  Without those variables,
+    # the module command fails.  Hence we actually have to source
+    # /etc/profile here.
+    echo load the module command 1>&2
+    source /etc/profile
+  fi
+  target=gaea
+  module purge
 elif [[ "$(hostname)" =~ "odin" ]] ; then
   target="odin"
 else
@@ -99,6 +133,7 @@ unset __ms_function_name
 
 export WHERE_AM_I=${target}
 
+
 # The following section is only used for the Rocoto workflow
 if [[ Q"${HOMEhafs:-}" != "Q" ]] ; then
   if [[ "${WHERE_AM_I}" = "wcoss2" ]] ; then
@@ -106,6 +141,12 @@ if [[ Q"${HOMEhafs:-}" != "Q" ]] ; then
     module use /apps/ops/test/nco/modulefiles/core
     module load rocoto/${rocoto_ver:-"1.3.5"}
   fi
-  module use ${HOMEhafs}/modulefiles
-  module load hafs.${WHERE_AM_I}
+  if [[ "${WHERE_AM_I}" = "gaeac6" ]] ; then
+     module use /autofs/ncrc-svm1_proj/hurr1/hafs/shared/modulefiles
+     module load rocoto/1.3.7_fix
+  fi
+  if [[ "${WHERE_AM_I}" != "gaeac6dtn" ]]; then
+    module use ${HOMEhafs}/modulefiles
+    module load hafs.${WHERE_AM_I}
+  fi
 fi
